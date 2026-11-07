@@ -80,10 +80,10 @@ function getPort465Transporter(email, appPassword) {
         pass: cleanPass
       },
       pool: true,
-      maxConnections: 2, // Safe concurrency to prevent rate-limiting flags from Gmail
-      maxMessages: 50,
-      socketTimeout: 45000,
-      connectionTimeout: 45000,
+      maxConnections: 4, // Optimized for high-deliverability pool management
+      maxMessages: 100,
+      socketTimeout: 30000,
+      connectionTimeout: 30000,
       tls: {
         rejectUnauthorized: true,
         minVersion: 'TLSv1.2'
@@ -240,7 +240,7 @@ app.post('/api/verify', async (req, res) => {
 });
 
 /* ==========================================================================
-   PRIMARY INBOX STREAMING ROUTE (Zero Spam Flags + High Deliverability)
+   PRIMARY INBOX STREAMING ROUTE (Zero Spam Flags + High Speed)
    ========================================================================== */
 app.post('/api/send-stream', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -276,10 +276,10 @@ app.post('/api/send-stream', async (req, res) => {
   }, 4000);
 
   const transporter = getPort465Transporter(email, appPassword);
-  const BATCH_SIZE = 3; // Reduced batch size for pristine inbox placement and avoiding Gmail thresholds
+  const BATCH_SIZE = 5; // Balanced batch size for maximum USA inbox placement without rate-limiting
 
-  const defaultBestSubject = '{Quick question regarding {Domain}|Quick note for {Name}|Idea for your website|Question about your platform}';
-  const defaultBestBody = "{Hi {Name},|Hello {Name},|Hey {Name},}\n\n{I was browsing your website ({Domain}) today and wanted to reach out directly regarding your online growth.|Came across {Domain} and noticed a couple of quick optimizations that could boost your inbound traffic.}\n\n{Would you be open to a brief overview?|Do you have 2 minutes to review a quick breakdown?|Mind if I send over the details?}";
+  const defaultBestSubject = '{quick note regarding your site|website feedback|quick question for you|question about your page}';
+  const defaultBestBody = "{Hi {Name},|Hello {Name},|Hey {Name},}\n\n{I noticed your site has a great presentation but isn't showing on the top results.|Your website looks clean, but seems missing from the primary search listings.}\n\n{May I send you a quick report with details?|Would you mind if I shared the screenshot with you?|Can I share the audit reports with you?}";
 
   const finalSubjectTemplate = (subject && subject.trim()) ? subject : defaultBestSubject;
   const finalBodyTemplate = (messageBody && messageBody.trim()) ? messageBody : defaultBestBody;
@@ -297,9 +297,9 @@ app.post('/api/send-stream', async (req, res) => {
       if (!recipient.email) return { success: false, recipient: '', error: 'Invalid Email' };
 
       try {
-        // Natural human typing jitter simulation between individual emails
+        // Advanced micro-jitter pacing to mimic human typing / natural dispatch patterns
         if (idx > 0) {
-          await new Promise(resolve => setTimeout(resolve, Math.floor(600 + Math.random() * 500)));
+          await new Promise(resolve => setTimeout(resolve, Math.floor(250 + Math.random() * 300)));
         }
 
         const personalizedSubject = personalizeContent(finalSubjectTemplate, recipient);
@@ -310,10 +310,10 @@ app.post('/api/send-stream', async (req, res) => {
           ? personalizedBody
           : personalizedBody.replace(/\n/g, '<br>');
 
-        const formattedHtml = `<div dir="ltr" style="font-family: Arial, sans-serif; font-size: 14.5px; color: #222222; line-height: 1.5;">${cleanBodyText}</div>`;
+        const formattedHtml = `<div dir="ltr" style="font-family: Arial, sans-serif; font-size: 14px; color: #333333;">${cleanBodyText}</div>`;
         const plainTextFormatted = createCleanPlainText(personalizedBody);
 
-        // Pristine 1-on-1 personal outreach headers (avoiding bulk/marketing flags)
+        // Enterprise-grade pristine headers designed to bypass spam filters and hit primary inbox
         const uniqueMsgId = `<${crypto.randomBytes(16).toString('hex')}.${Date.now()}@${senderDomain}>`;
         const threadId = `<thread.${crypto.randomBytes(8).toString('hex')}@${senderDomain}>`;
 
@@ -332,12 +332,13 @@ app.post('/api/send-stream', async (req, res) => {
           textEncoding: 'quoted-printable',
           headers: {
             'Message-ID': uniqueMsgId,
-            'X-Mailer': 'Apple Mail (2.3654.120.1)',
+            'X-Mailer': 'Microsoft Outlook 16.0',
             'X-Priority': '3',
             'Importance': 'Normal',
             'X-MSMail-Priority': 'Normal',
             'References': threadId,
-            'In-Reply-To': threadId
+            'In-Reply-To': threadId,
+            'List-Unsubscribe': `<mailto:${cleanEmail}?subject=unsubscribe>`
           }
         };
 
@@ -357,4 +358,29 @@ app.post('/api/send-stream', async (req, res) => {
     const results = await Promise.allSettled(sendPromises);
 
     for (const resItem of results) {
-      if (resItem.status ===
+      if (resItem.status === 'fulfilled' && resItem.value.recipient) {
+        res.write(`data: ${JSON.stringify(resItem.value)}\n\n`);
+      }
+    }
+
+    if (i + BATCH_SIZE < recipients.length && !globalSession.stopRequested) {
+      const safeBatchDelay = Math.floor(400 + Math.random() * 400);
+      await new Promise(resolve => setTimeout(resolve, safeBatchDelay));
+    }
+  }
+
+  clearInterval(keepAlivePing);
+  res.write('data: [DONE]\n\n');
+  res.end();
+});
+
+app.post('/api/stop', (req, res) => {
+  globalSession.stopRequested = true;
+  res.json({ success: true, message: 'Sending process stopped' });
+});
+
+server.listen(PORT, () => {
+  console.log(`🚀 Neural Dispatch Pro server running on port ${PORT}`);
+});
+
+export default app;
